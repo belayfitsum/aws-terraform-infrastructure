@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # AWS Terraform Infrastructure
 
 Modular Terraform infrastructure for AWS deployments.
@@ -39,3 +40,6 @@ terraform apply
 - **Security**: Security groups for EC2 and RDS
 - **Compute**: EC2 instances with configurable specs
 - **Database**: RDS PostgreSQL with backup and encryption
+=======
+aws infra
+>>>>>>> ef02236805583e33a865416839cfdad9efc83de0
