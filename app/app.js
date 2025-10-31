@@ -70,7 +70,7 @@
 
 // New test with sqlite3
 
-// app.js - Updated for pipeline demo
+// app.js - Updated for pipeline demo - TEST 1
 const express = require('express');
 const db = require('./db'); // Import DB connection
 const app = express();
