@@ -1,9 +1,17 @@
-name: Infrastructure Deployment
+name: Infrastructure Deployment - Demo
 
 on:
   push:
     branches: [main]
+    paths:
+      - 'environments/**'
+      - 'modules/**'
+      - '.github/workflows/infrastructure.yaml'
   pull_request:
+    paths:
+      - 'environments/**'
+      - 'modules/**'
+      - '.github/workflows/infrastructure.yaml'
 
 permissions:
   id-token: write
@@ -15,7 +23,7 @@ env:
   AWS_ROLE: ${{ secrets.AWS_ROLE }}
 
 jobs:
-  terraform-dev:
+  infrastructure-deploy:
     runs-on: ubuntu-latest
     defaults:
       run:
