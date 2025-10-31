@@ -20,6 +20,7 @@ provider "aws" {
 locals {
   project_name = "devops-api-prod"
   environment  = "production"
+  # Updated for pipeline demo - infrastructure change
   
   common_tags = {
     Project     = local.project_name
