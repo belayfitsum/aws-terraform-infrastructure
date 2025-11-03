@@ -1,0 +1,91 @@
+- hosts: ec2
+  become: yes
+  vars:
+    ansible_python_interpreter: auto_silent
+  tasks:
+    - name: Install Python 3.8+ for Ansible
+      raw: |
+        if ! python3.8 --version >/dev/null 2>&1; then
+          yum update -y
+          yum install -y python38
+        fi
+      changed_when: false
+    
+    - name: Set Python interpreter to 3.8
+      set_fact:
+        ansible_python_interpreter: /usr/bin/python3.8
+    - name: Check if Docker is running
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+      ignore_errors: yes
+
+    - name: Add ec2-user to docker group
+      user:
+        name: ec2-user
+        groups: docker
+        append: yes
+      ignore_errors: yes
+
+    - name: Check Node.js installation (NVM)
+      shell: |
+        source /home/ec2-user/.nvm/nvm.sh
+        node --version
+      register: node_version
+      ignore_errors: yes
+      become_user: ec2-user
+
+    - name: Display Node.js version
+      debug:
+        msg: "Node.js version: {{ node_version.stdout if node_version.rc == 0 else 'Not installed' }}"
+
+    - name: Check npm installation (NVM)
+      shell: |
+        source /home/ec2-user/.nvm/nvm.sh
+        npm --version
+      register: npm_version
+      ignore_errors: yes
+      become_user: ec2-user
+
+    - name: Display npm version
+      debug:
+        msg: "npm version: {{ npm_version.stdout if npm_version.rc == 0 else 'Not installed' }}"
+
+    - name: Check pm2 installation
+      command: pm2 --version
+      register: pm2_version
+      ignore_errors: yes
+      become_user: ec2-user
+
+    - name: Display pm2 version
+      debug:
+        msg: "pm2 version: {{ pm2_version.stdout if pm2_version.rc == 0 else 'Not installed' }}"
+
+    - name: Create application directory
+      file:
+        path: /home/ec2-user/app
+        state: directory
+        owner: ec2-user
+        group: ec2-user
+        mode: '0755'
+
+    - name: Configure Docker daemon for ECR
+      copy:
+        content: |
+          {
+            "log-driver": "json-file",
+            "log-opts": {
+              "max-size": "10m",
+              "max-file": "3"
+            }
+          }
+        dest: /etc/docker/daemon.json
+        mode: '0644'
+      notify: restart docker
+
+  handlers:
+    - name: restart docker
+      systemd:
+        name: docker
+        state: restarted
