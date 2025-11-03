@@ -1,58 +1,66 @@
 - hosts: ec2
   become: yes
   vars:
-    ansible_python_interpreter: /usr/bin/python3
+    ansible_python_interpreter: auto_silent
   tasks:
-    - name: Update all packages
-      yum:
-        name: "*"
-        state: latest
-
-    - name: Install essential packages
-      yum:
-        name:
-          - git
-          - vim
-          - unzip
-          - wget
-          - docker
-          - awscli
-        state: present
-
-    - name: Start and enable Docker
+    - name: Install Python 3.8+ for Ansible
+      raw: |
+        if ! python3.8 --version >/dev/null 2>&1; then
+          yum update -y
+          yum install -y python38
+        fi
+      changed_when: false
+    
+    - name: Set Python interpreter to 3.8
+      set_fact:
+        ansible_python_interpreter: /usr/bin/python3.8
+    - name: Check if Docker is running
       systemd:
         name: docker
         state: started
         enabled: yes
+      ignore_errors: yes
 
     - name: Add ec2-user to docker group
       user:
         name: ec2-user
         groups: docker
         append: yes
+      ignore_errors: yes
 
-    - name: Install Node.js 20.x via NodeSource
-      ansible.builtin.shell: |
-        curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
-        yum install -y nodejs
-      args:
-        executable: /bin/bash
+    - name: Check Node.js installation (NVM)
+      shell: |
+        source /home/ec2-user/.nvm/nvm.sh
+        node --version
+      register: node_version
+      ignore_errors: yes
+      become_user: ec2-user
 
-    - name: Ensure npm is latest
-      npm:
-        name: npm
-        global: yes
-        state: latest
+    - name: Display Node.js version
+      debug:
+        msg: "Node.js version: {{ node_version.stdout if node_version.rc == 0 else 'Not installed' }}"
 
-    - name: Install pm2 globally via npm
-      npm:
-        name: pm2
-        global: yes
+    - name: Check npm installation (NVM)
+      shell: |
+        source /home/ec2-user/.nvm/nvm.sh
+        npm --version
+      register: npm_version
+      ignore_errors: yes
+      become_user: ec2-user
 
-    - name: Install sqlite3 globally
-      npm:
-        name: sqlite3
-        global: yes
+    - name: Display npm version
+      debug:
+        msg: "npm version: {{ npm_version.stdout if npm_version.rc == 0 else 'Not installed' }}"
+
+    - name: Check pm2 installation
+      command: pm2 --version
+      register: pm2_version
+      ignore_errors: yes
+      become_user: ec2-user
+
+    - name: Display pm2 version
+      debug:
+        msg: "pm2 version: {{ pm2_version.stdout if pm2_version.rc == 0 else 'Not installed' }}"
 
     - name: Create application directory
       file:
