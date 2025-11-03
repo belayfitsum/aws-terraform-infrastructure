@@ -83,8 +83,23 @@ jobs:
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
-          format: 'table'
+          image-ref: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.build.outputs.image-tag }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+        continue-on-error: true
+      
+      - name: Upload Trivy scan results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: trivy-scan-results
+          path: trivy-results.sarif
+      
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
         continue-on-error: true
 
   app-deploy:
@@ -110,6 +125,7 @@ jobs:
         env:
           PRIVATE_KEY: ${{ secrets.AWS_SSH_PRIVATE_KEY }}
         run: |
+          mkdir -p ~/.ssh
           echo "$PRIVATE_KEY" > ~/.ssh/postgres.pem
           chmod 600 ~/.ssh/postgres.pem
           # Update inventory with current EC2 IP
