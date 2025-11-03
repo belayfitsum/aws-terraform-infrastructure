@@ -105,7 +105,6 @@ jobs:
 
   app-deploy:
     needs: [app-test, app-build-and-push]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
