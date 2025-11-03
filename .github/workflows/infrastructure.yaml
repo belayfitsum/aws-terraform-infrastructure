@@ -55,7 +55,7 @@ jobs:
         run: terraform plan
       
       - name: Terraform Apply
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         env:
           TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
         run: terraform apply -auto-approve

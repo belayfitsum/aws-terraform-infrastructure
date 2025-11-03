@@ -7,7 +7,7 @@ variable "key_pair_name" {
 variable "allowed_ssh_cidrs" {
   description = "CIDR blocks allowed for SSH access"
   type        = list(string)
-  default     = ["0.0.0.0/0"] # CHANGE THIS TO YOUR IP!
+  default     = ["10.0.0.0/16"]
 }
 
 variable "create_rds" {
