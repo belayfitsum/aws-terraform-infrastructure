@@ -1,4 +1,4 @@
-# Development Environment - Free Tier Optimized- test
+# Development Environment - Free Tier Optimized - ready for deployment
 terraform {
   required_version = ">= 1.0"
   required_providers {
@@ -58,15 +58,16 @@ module "compute" {
   common_tags        = local.common_tags
 }
 
-# Database Module
-module "database" {
-  source = "../../modules/database"
-  
-  project_name       = local.project_name
-  private_subnet_ids = module.vpc.private_subnet_ids
-  security_group_ids = [module.security.rds_security_group_id]
-  db_name            = var.db_name
-  db_username        = var.db_username
-  db_password        = var.db_password
-  common_tags        = local.common_tags
-}
+# Database Module - Commented out for SQLite testing (cost optimization)
+# Uncomment for production PostgreSQL deployment
+# module "database" {
+#   source = "../../modules/database"
+#   
+#   project_name       = local.project_name
+#   private_subnet_ids = module.vpc.private_subnet_ids
+#   security_group_ids = [module.security.rds_security_group_id]
+#   db_name            = var.db_name
+#   db_username        = var.db_username
+#   db_password        = var.db_password
+#   common_tags        = local.common_tags
+# }
