@@ -223,6 +223,139 @@ DB_NAME=your-database
 PORT=3000
 ```
 
+## 🛡️ Security & Vulnerability Management
+
+### Automated Security Scanning
+This project includes comprehensive security scanning with **Trivy** integrated into the CI/CD pipeline:
+
+- **Container vulnerability scanning** on every build
+- **Dependency vulnerability detection** for Node.js packages
+- **SARIF report generation** for GitHub Security integration
+- **Automated security alerts** in GitHub Security tab
+
+### GitHub Secrets Configuration
+Add these additional secrets for full functionality:
+
+| Secret Name | Description | Required For |
+|-------------|-------------|-------------|
+| `AWS_ACCESS_KEY_ID` | AWS access key | ECR/Deployment |
+| `AWS_SECRET_ACCESS_KEY` | AWS secret key | ECR/Deployment |
+| `AWS_SSH_PRIVATE_KEY` | EC2 SSH private key | Deployment |
+| `AWS_EC2_HOST` | EC2 instance IP | Deployment |
+
+### Security Scanning Commands
+
+#### Local Trivy Scanning
+```bash
+# Install Trivy
+curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+
+# Login to ECR
+aws ecr get-login-password --region eu-central-1 | docker login --username AWS --password-stdin 977952712667.dkr.ecr.eu-central-1.amazonaws.com
+
+# Scan ECR image
+trivy image 977952712667.dkr.ecr.eu-central-1.amazonaws.com/devops-api-app:latest
+
+# Generate HTML report
+trivy image --format template --template '@contrib/html.tpl' -o report.html 977952712667.dkr.ecr.eu-central-1.amazonaws.com/devops-api-app:latest
+
+# Generate JSON report
+trivy image --format json -o report.json 977952712667.dkr.ecr.eu-central-1.amazonaws.com/devops-api-app:latest
+```
+
+#### Dependency Management
+```bash
+# Create package-lock.json
+cd app
+npm i --package-lock-only
+
+# Fix vulnerabilities
+npm audit fix
+
+# Check for updates
+npm update
+
+# Security audit
+npm audit --audit-level=moderate
+```
+
+### Viewing Security Results
+
+1. **GitHub Security Tab**
+   - Navigate to repository → **Security** → **Code scanning alerts**
+   - View detailed vulnerability information
+   - Get remediation suggestions
+   - Track vulnerability status over time
+
+2. **GitHub Actions Artifacts**
+   - Download SARIF files from completed pipeline runs
+   - Access detailed scan reports
+   - Compare results across builds
+
+3. **Local Terminal Output**
+   - Real-time vulnerability table display
+   - Severity-based categorization
+   - Direct remediation guidance
+
+### Common Vulnerabilities & Fixes
+
+#### High Severity: CVE-2024-21538 (cross-spawn)
+```bash
+# Problem: cross-spawn 7.0.3 has ReDoS vulnerability
+# Solution: Update to 7.0.5+
+npm update cross-spawn
+# Or force update in package-lock.json
+```
+
+#### Dependency Update Workflow
+```bash
+# 1. Update dependencies locally
+cd app
+npm audit fix
+npm update
+
+# 2. Test changes
+npm test
+
+# 3. Commit and push
+git add app/package*.json
+git commit -m "Security: Update dependencies to fix vulnerabilities"
+git push
+
+# 4. Monitor new scan results in GitHub Security tab
+```
+
+### Security Pipeline Configuration
+
+The security scanning is configured in `.github/workflows/application.yaml`:
+
+```yaml
+# Trivy vulnerability scanner
+- name: Run Trivy vulnerability scanner
+  uses: aquasecurity/trivy-action@master
+  with:
+    image-ref: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.build.outputs.image-tag }}
+    format: 'sarif'
+    output: 'trivy-results.sarif'
+  continue-on-error: true
+
+# Upload to GitHub Security
+- name: Upload Trivy results to GitHub Security
+  uses: github/codeql-action/upload-sarif@v3
+  if: always()
+  with:
+    sarif_file: trivy-results.sarif
+```
+
+### Required Permissions
+Ensure your workflow has these permissions:
+```yaml
+permissions:
+  security-events: write  # Required for SARIF upload
+  contents: read
+  pull-requests: write
+```
+
 ## 🚨 Troubleshooting
 
 <details>
@@ -255,6 +388,104 @@ TF_LOG=DEBUG terraform apply
 
 </details>
 
+## 🚀 Deployment Configuration
+
+### EC2 Deployment Setup
+
+#### Check EC2 Status
+```bash
+aws ec2 describe-instances --region eu-central-1 --query 'Reservations[].Instances[].[InstanceId,State.Name,PublicIpAddress]'
+```
+
+#### Start Instance if Stopped
+```bash
+aws ec2 start-instances --instance-ids YOUR_INSTANCE_ID --region eu-central-1
+```
+
+#### Update GitHub Secrets
+- Update `AWS_EC2_HOST` with current public IP
+- Verify SSH key is correct in `AWS_SSH_PRIVATE_KEY`
+
+#### Test Connection
+```bash
+# Test SSH connection manually
+ssh -i your-key.pem -o ConnectTimeout=10 ec2-user@YOUR_EC2_IP "echo 'Connection successful'"
+```
+
+### Manual Deployment Commands
+
+If you need to deploy manually to EC2:
+
+```bash
+# SSH into EC2
+ssh -i your-key.pem ec2-user@YOUR_EC2_IP
+
+# Login to ECR
+aws ecr get-login-password --region eu-central-1 | docker login --username AWS --password-stdin 977952712667.dkr.ecr.eu-central-1.amazonaws.com
+
+# Pull and run latest image
+docker stop api-app || true
+docker rm api-app || true
+docker pull 977952712667.dkr.ecr.eu-central-1.amazonaws.com/devops-api-app:latest
+docker run -d --name api-app -p 3000:3000 --restart unless-stopped 977952712667.dkr.ecr.eu-central-1.amazonaws.com/devops-api-app:latest
+
+# Verify deployment
+docker ps | grep api-app
+curl http://localhost:3000/health
+```ng
+- ✅ **Application Testing**: Working  
+- ✅ **Container Build & Push**: Working
+- ✅ **Security Scanning**: Working
+- ✅ **GitHub Security Integration**: Working
+- ❌ **EC2 Deployment**: Temporarily disabled (connection timeout)
+
+### Re-enabling EC2 Deployment
+
+To re-enable deployment when EC2 is accessible:
+
+1. **Check EC2 Status**
+   ```bash
+   aws ec2 describe-instances --region eu-central-1 --query 'Reservations[].Instances[].[InstanceId,State.Name,PublicIpAddress]'
+   ```
+
+2. **Start Instance if Stopped**
+   ```bash
+   aws ec2 start-instances --instance-ids YOUR_INSTANCE_ID --region eu-central-1
+   ```
+
+3. **Update GitHub Secrets**
+   - Update `AWS_EC2_HOST` with current public IP
+   - Verify SSH key is correct
+
+4. **Enable Deployment in Workflow**
+   ```yaml
+   # In .github/workflows/application.yaml
+   app-deploy:
+     if: github.ref == 'refs/heads/main' && github.event_name == 'push'  # Change from 'false'
+   ```
+
+### Manual Deployment Commands
+
+If you need to deploy manually to EC2:
+
+```bash
+# SSH into EC2
+ssh -i your-key.pem ec2-user@YOUR_EC2_IP
+
+# Login to ECR
+aws ecr get-login-password --region eu-central-1 | docker login --username AWS --password-stdin 977952712667.dkr.ecr.eu-central-1.amazonaws.com
+
+# Pull and run latest image
+docker stop api-app || true
+docker rm api-app || true
+docker pull 977952712667.dkr.ecr.eu-central-1.amazonaws.com/devops-api-app:latest
+docker run -d --name api-app -p 3000:3000 --restart unless-stopped 977952712667.dkr.ecr.eu-central-1.amazonaws.com/devops-api-app:latest
+
+# Verify deployment
+docker ps | grep api-app
+curl http://localhost:3000/health
+```
+
 ## 🤝 Contributing
 
 1. **Fork** the repository
@@ -262,3 +493,22 @@ TF_LOG=DEBUG terraform apply
 3. **Commit** your changes (`git commit -m 'Add amazing feature'`)
 4. **Push** to the branch (`git push origin feature/amazing-feature`)
 5. **Open** a Pull Request
+
+## 📊 Project Metrics
+
+- **Infrastructure**: 4 Terraform modules (VPC, Security, Compute, Database)
+- **CI/CD Pipelines**: 3 workflows (Infrastructure, Application, Full Pipeline)
+- **Security Scanning**: Trivy integration with GitHub Security
+- **Container Registry**: AWS ECR with automated builds
+- **Deployment**: Ansible-based configuration management (currently disabled)
+- **Monitoring**: CloudWatch integration ready
+- **Security Alerts**: Automated vulnerability detection and reporting
+
+## 📊 Project Metrics
+
+- **Infrastructure**: 4 Terraform modules (VPC, Security, Compute, Database)
+- **CI/CD Pipelines**: 3 workflows (Infrastructure, Application, Full Pipeline)
+- **Security Scanning**: Trivy integration with GitHub Security
+- **Container Registry**: AWS ECR with automated builds
+- **Deployment**: Ansible-based configuration management
+- **Monitoring**: CloudWatch integration ready
