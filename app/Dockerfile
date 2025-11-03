@@ -1,11 +1,11 @@
-FROM node:20-alpine
+FROM node:20-alpine3.19
 
 # Set working directory
 WORKDIR /app
 
-# Install dependencies
+# Install dependencies (production only)
 COPY package*.json ./
-RUN npm install 
+RUN npm ci --only=production && npm cache clean --force
 
 # Copy source code
 COPY . .
