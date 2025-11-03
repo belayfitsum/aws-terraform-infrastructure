@@ -1,0 +1,182 @@
+name: Full Infrastructure + Application Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+        - dev
+        - prod
+      destroy:
+        description: 'Destroy infrastructure'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  AWS_ROLE: ${{ secrets.AWS_ROLE }}
+  ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+
+jobs:
+  infrastructure:
+    runs-on: ubuntu-latest
+    outputs:
+      ec2_ip: ${{ steps.tf-output.outputs.ec2_ip }}
+      rds_endpoint: ${{ steps.tf-output.outputs.rds_endpoint }}
+    defaults:
+      run:
+        working-directory: ./environments/${{ github.event.inputs.environment }}
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          role-to-assume: ${{ env.AWS_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: GitHub-OIDC-TERRAFORM
+      
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.0
+          terraform_wrapper: false
+      
+      - name: Terraform Init
+        run: terraform init
+      
+      - name: Terraform Validate
+        run: terraform validate
+      
+      - name: Terraform Plan
+        env:
+          TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+        run: terraform plan -out=tfplan
+      
+      - name: Terraform Apply
+        if: ${{ !github.event.inputs.destroy }}
+        env:
+          TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+        run: terraform apply -auto-approve tfplan
+      
+      - name: Terraform Destroy
+        if: ${{ github.event.inputs.destroy }}
+        env:
+          TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+        run: terraform destroy -auto-approve
+      
+      - name: Get Terraform Outputs
+        if: ${{ !github.event.inputs.destroy }}
+        id: tf-output
+        run: |
+          echo "ec2_ip=$(terraform output -raw ec2_public_ip || echo 'not_available')" >> $GITHUB_OUTPUT
+          echo "rds_endpoint=$(terraform output -raw rds_endpoint || echo 'not_available')" >> $GITHUB_OUTPUT
+
+  test-and-build:
+    if: ${{ !github.event.inputs.destroy }}
+    runs-on: ubuntu-latest
+    outputs:
+      image-tag: ${{ steps.build.outputs.image-tag }}
+    defaults:
+      run:
+        working-directory: ./app
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: './app/package-lock.json'
+      
+      - name: Install Dependencies
+        run: npm install
+      
+      - name: Run Tests
+        run: npm test
+      
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          role-to-assume: ${{ env.AWS_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: GitHub-OIDC-BUILD
+      
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+      
+      - name: Build and Push Docker Image
+        id: build
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .\n          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .\n          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG\n          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest\n          echo \"image-tag=$IMAGE_TAG\" >> $GITHUB_OUTPUT
+
+  deploy:
+    if: ${{ !github.event.inputs.destroy }}
+    needs: [infrastructure, test-and-build]
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          role-to-assume: ${{ env.AWS_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: GitHub-OIDC-DEPLOY
+      
+      - name: Deploy Application
+        env:
+          PRIVATE_KEY: ${{ secrets.AWS_SSH_PRIVATE_KEY }}
+          HOST: ${{ needs.infrastructure.outputs.ec2_ip }}
+          USER: ec2-user
+          ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
+          IMAGE_TAG: ${{ needs.test-and-build.outputs.image-tag }}
+          RDS_ENDPOINT: ${{ needs.infrastructure.outputs.rds_endpoint }}
+        run: |
+          echo "$PRIVATE_KEY" > private_key.pem
+          chmod 600 private_key.pem
+          
+          # Wait for EC2 to be ready
+          sleep 60
+          
+          ssh -o StrictHostKeyChecking=no -i private_key.pem $USER@$HOST << EOF
+            # Install Docker and AWS CLI
+            sudo yum update -y
+            sudo yum install -y docker awscli
+            sudo systemctl start docker
+            sudo systemctl enable docker
+            sudo usermod -a -G docker ec2-user
+            
+            # Login to ECR
+            aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin $ECR_REGISTRY
+            
+            # Stop and remove old container
+            docker stop api-app || true
+            docker rm api-app || true
+            
+            # Run new container
+            docker run -d --name api-app -p 3000:3000 \
+              -e DB_HOST=$RDS_ENDPOINT \
+              -e DB_PORT=5432 \
+              -e DB_USER=${{ secrets.DB_USER }} \
+              -e DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
+              -e DB_NAME=${{ secrets.DB_NAME }} \
+              --restart unless-stopped \
+              $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          EOF
