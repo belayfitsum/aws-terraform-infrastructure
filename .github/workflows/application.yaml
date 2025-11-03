@@ -104,6 +104,22 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
           role-session-name: GitHub-OIDC-DEPLOY-DEV
       
+      - name: Setup Ansible
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ansible
+      
+      - name: Configure Server with Ansible
+        env:
+          PRIVATE_KEY: ${{ secrets.AWS_SSH_PRIVATE_KEY }}
+        run: |
+          echo "$PRIVATE_KEY" > ~/.ssh/postgres.pem
+          chmod 600 ~/.ssh/postgres.pem
+          # Update inventory with current EC2 IP
+          sed -i "s/3.67.72.2/${{ secrets.AWS_EC2_HOST }}/g" ansible/inventory/hosts
+          # Run Ansible playbook
+          ansible-playbook -i ansible/inventory/hosts ansible/playbooks/configure-server.yaml
+      
       - name: Login to Amazon ECR
         id: login-ecr-deploy
         uses: aws-actions/amazon-ecr-login@v1
@@ -119,16 +135,7 @@ jobs:
           echo "$PRIVATE_KEY" > private_key.pem
           chmod 600 private_key.pem
           ssh -o StrictHostKeyChecking=no -i private_key.pem $USER@$HOST << EOF
-            # Install Docker if not present
-            if ! command -v docker >/dev/null 2>&1; then
-              sudo yum update -y
-              sudo yum install -y docker
-              sudo systemctl start docker
-              sudo systemctl enable docker
-              sudo usermod -a -G docker ec2-user
-            fi
-            
-            # Login to ECR
+            # Login to ECR (Docker already configured by Ansible)
             aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin $ECR_REGISTRY
             
             # Stop and remove old container
@@ -137,11 +144,7 @@ jobs:
             
             # Run new container
             docker run -d --name api-app -p 3000:3000 \
-              -e DB_HOST=${{ secrets.DB_HOST }} \
-              -e DB_PORT=5432 \
-              -e DB_USER=${{ secrets.DB_USER }} \
-              -e DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
-              -e DB_NAME=${{ secrets.DB_NAME }} \
+              --restart unless-stopped \
               $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           EOF
 
