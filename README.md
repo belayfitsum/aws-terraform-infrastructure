@@ -44,10 +44,10 @@ Add these secrets to your GitHub repository:
 
 | Secret Name | Description | Example |
 |-------------|-------------|---------|
-| `AWS_REGION` | AWS deployment region | `eu-central-1` |
-| `AWS_ACCESS_KEY_ID` | AWS access key | `AKIA...` |
-| `AWS_SECRET_ACCESS_KEY` | AWS secret key | `wJalr...` |
-| `ECR_REPOSITORY` | ECR repository name | `devops-api-app` |
+| `AWS_REGION` | AWS deployment region | `<your-region>` |
+| `AWS_ACCESS_KEY_ID` | AWS access key | `<your-access-key>` |
+| `AWS_SECRET_ACCESS_KEY` | AWS secret key | `<your-secret-key>` |
+| `ECR_REPOSITORY` | ECR repository name | `<your-repo-name>` |
 
 ### 3️⃣ Deploy Infrastructure
 ```bash
