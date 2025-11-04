@@ -18,13 +18,11 @@ on:
         type: boolean
 
 permissions:
-  id-token: write
   contents: read
   pull-requests: write
 
 env:
   AWS_REGION: ${{ secrets.AWS_REGION }}
-  AWS_ROLE: ${{ secrets.AWS_ROLE }}
   ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
 
 jobs:
@@ -40,11 +38,11 @@ jobs:
       - uses: actions/checkout@v3
       
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v1
+        uses: aws-actions/configure-aws-credentials@v2
         with:
-          role-to-assume: ${{ env.AWS_ROLE }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
-          role-session-name: GitHub-OIDC-TERRAFORM
       
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
@@ -107,11 +105,11 @@ jobs:
         run: npm test
       
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v1
+        uses: aws-actions/configure-aws-credentials@v2
         with:
-          role-to-assume: ${{ env.AWS_ROLE }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
-          role-session-name: GitHub-OIDC-BUILD
       
       - name: Login to Amazon ECR
         id: login-ecr
@@ -134,11 +132,11 @@ jobs:
       - uses: actions/checkout@v3
       
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v1
+        uses: aws-actions/configure-aws-credentials@v2
         with:
-          role-to-assume: ${{ env.AWS_ROLE }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
-          role-session-name: GitHub-OIDC-DEPLOY
       
       - name: Deploy Application
         env:
