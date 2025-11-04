@@ -3,7 +3,7 @@
 [![Infrastructure](https://github.com/belayfitsum/aws-terraform-infrastructure/workflows/Infrastructure%20Deployment%20-%20Demo/badge.svg)](https://github.com/belayfitsum/aws-terraform-infrastructure/actions)
 [![Application](https://github.com/belayfitsum/aws-terraform-infrastructure/workflows/Application%20CI%2FCD%20Pipeline/badge.svg)](https://github.com/belayfitsum/aws-terraform-infrastructure/actions)
 ![Terraform](https://img.shields.io/badge/terraform-1.5+-blue)
-![AWS](https://img.shields.io/badge/AWS-Ready-orange)
+![AWS](https://img.shields.io/badge/AWS-Deployed-green)
 ![Node.js](https://img.shields.io/badge/node.js-20+-green)
 
 > **Production-ready infrastructure with automated CI/CD pipelines**  
@@ -45,9 +45,9 @@ Add these secrets to your GitHub repository:
 | Secret Name | Description | Example |
 |-------------|-------------|---------|
 | `AWS_REGION` | AWS deployment region | `eu-central-1` |
-| `AWS_ROLE` | IAM role ARN for OIDC | `arn:aws:iam::123:role/github-actions` |
-| `DB_PASSWORD` | Database password | `SecurePassword123!` |
-| `ECR_REPOSITORY` | ECR repository name | `my-app-repo` |
+| `AWS_ACCESS_KEY_ID` | AWS access key | `AKIA...` |
+| `AWS_SECRET_ACCESS_KEY` | AWS secret key | `wJalr...` |
+| `ECR_REPOSITORY` | ECR repository name | `devops-api-app` |
 
 ### 3️⃣ Deploy Infrastructure
 ```bash
@@ -251,16 +251,16 @@ Add these additional secrets for full functionality:
 curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
 
 # Login to ECR
-aws ecr get-login-password --region eu-central-1 | docker login --username AWS --password-stdin 977952712667.dkr.ecr.eu-central-1.amazonaws.com
+aws ecr get-login-password --region <your-region> | docker login --username AWS --password-stdin <account-id>.dkr.ecr.<your-region>.amazonaws.com
 
 # Scan ECR image
-trivy image 977952712667.dkr.ecr.eu-central-1.amazonaws.com/devops-api-app:latest
+trivy image <account-id>.dkr.ecr.<your-region>.amazonaws.com/<your-repo>:latest
 
 # Generate HTML report
-trivy image --format template --template '@contrib/html.tpl' -o report.html 977952712667.dkr.ecr.eu-central-1.amazonaws.com/devops-api-app:latest
+trivy image --format template --template '@contrib/html.tpl' -o report.html <account-id>.dkr.ecr.<your-region>.amazonaws.com/<your-repo>:latest
 
 # Generate JSON report
-trivy image --format json -o report.json 977952712667.dkr.ecr.eu-central-1.amazonaws.com/devops-api-app:latest
+trivy image --format json -o report.json <account-id>.dkr.ecr.<your-region>.amazonaws.com/<your-repo>:latest
 ```
 
 #### Dependency Management
@@ -388,50 +388,102 @@ TF_LOG=DEBUG terraform apply
 
 </details>
 
-## 🚀 Deployment Configuration
+## 🚀 Deployment Status & Testing
 
-### EC2 Deployment Setup
+### Current Status ✅
+- **Infrastructure**: Deployed and running
+- **CI/CD Pipeline**: Fully operational
+- **Security Scanning**: Active with Trivy integration
+- **EC2 Deployment**: Configured and accessible
+- **Application**: Ready for deployment
 
-#### Check EC2 Status
+### Live Application
+- **EC2 Instance**: `<instance-id>` (running)
+- **Public IP**: `<your-ec2-ip>`
+- **Application URL**: http://<your-ec2-ip>:3000
+- **Health Check**: http://<your-ec2-ip>:3000/health
+
+### Testing the Deployment
+
+#### Quick Health Check
 ```bash
-aws ec2 describe-instances --region eu-central-1 --query 'Reservations[].Instances[].[InstanceId,State.Name,PublicIpAddress]'
+# Test application endpoint
+curl http://<your-ec2-ip>:3000/health
+
+# Expected response
+{"status":"OK","timestamp":"2025-11-03T..."}
 ```
 
-#### Start Instance if Stopped
+#### SSH Access for Debugging
 ```bash
-aws ec2 start-instances --instance-ids YOUR_INSTANCE_ID --region eu-central-1
-```
+# Connect to EC2 instance
+ssh -i <your-key>.pem ec2-user@<your-ec2-ip>
 
-#### Update GitHub Secrets
-- Update `AWS_EC2_HOST` with current public IP
-- Verify SSH key is correct in `AWS_SSH_PRIVATE_KEY`
+# Check running containers
+docker ps
 
-#### Test Connection
-```bash
-# Test SSH connection manually
-ssh -i your-key.pem -o ConnectTimeout=10 ec2-user@YOUR_EC2_IP "echo 'Connection successful'"
+# View container logs
+docker logs api-app
+
+# Test local connection
+curl http://localhost:3000/health
 ```
 
 ### Manual Deployment Commands
 
-If you need to deploy manually to EC2:
+If you need to deploy manually:
 
 ```bash
 # SSH into EC2
-ssh -i your-key.pem ec2-user@YOUR_EC2_IP
+ssh -i <your-key>.pem ec2-user@<your-ec2-ip>
 
 # Login to ECR
-aws ecr get-login-password --region eu-central-1 | docker login --username AWS --password-stdin 977952712667.dkr.ecr.eu-central-1.amazonaws.com
+aws ecr get-login-password --region <your-region> | docker login --username AWS --password-stdin <account-id>.dkr.ecr.<your-region>.amazonaws.com
 
 # Pull and run latest image
 docker stop api-app || true
 docker rm api-app || true
-docker pull 977952712667.dkr.ecr.eu-central-1.amazonaws.com/devops-api-app:latest
-docker run -d --name api-app -p 3000:3000 --restart unless-stopped 977952712667.dkr.ecr.eu-central-1.amazonaws.com/devops-api-app:latest
+docker pull <account-id>.dkr.ecr.<your-region>.amazonaws.com/<your-repo>:latest
+docker run -d --name api-app -p 3000:3000 --restart unless-stopped <account-id>.dkr.ecr.<your-region>.amazonaws.com/<your-repo>:latest
 
 # Verify deployment
 docker ps | grep api-app
 curl http://localhost:3000/health
+```
+
+### Troubleshooting Deployment
+
+#### Container Not Running
+```bash
+# Check if container exists
+docker ps -a | grep api-app
+
+# View container logs
+docker logs api-app
+
+# Restart container
+docker restart api-app
+```
+
+#### Network Issues
+```bash
+# Check security group allows port 3000
+aws ec2 describe-security-groups --region <your-region> --group-ids <your-security-group-id>
+
+# Test internal connectivity
+ssh -i <your-key>.pem ec2-user@<your-ec2-ip> "curl http://localhost:3000/health"
+```
+
+#### Pipeline Debugging
+```bash
+# Check latest ECR images
+aws ecr describe-images --region <your-region> --repository-name <your-repo> --query 'imageDetails[0]'
+
+# Verify GitHub Secrets are set
+# - AWS_SSH_PRIVATE_KEY
+# - AWS_EC2_HOST
+# - AWS_ACCESS_KEY_ID
+# - AWS_SECRET_ACCESS_KEY
 ```ng
 - ✅ **Application Testing**: Working  
 - ✅ **Container Build & Push**: Working
@@ -500,9 +552,10 @@ curl http://localhost:3000/health
 - **CI/CD Pipelines**: 3 workflows (Infrastructure, Application, Full Pipeline)
 - **Security Scanning**: Trivy integration with GitHub Security
 - **Container Registry**: AWS ECR with automated builds
-- **Deployment**: Ansible-based configuration management (currently disabled)
+- **Deployment**: SSH-based deployment to EC2
 - **Monitoring**: CloudWatch integration ready
 - **Security Alerts**: Automated vulnerability detection and reporting
+- **Current Deployment**: EC2 instance with automated deployment
 
 ## 📊 Project Metrics
 
